@@ -50,6 +50,51 @@ export default class MyPlugin extends Plugin {
 
 		// Register the Editor Extension for Live Preview (Editing Mode)
 		this.registerEditorExtension(ansiEditorExtension);
+
+		// Add Command to Join Lines (Smart ANSI Merge)
+		this.addCommand({
+			id: "join-ansi-lines",
+			name: "Join lines (Smart ANSI merge)",
+			editorCallback: (editor) => {
+				this.joinAnsiLines(editor);
+			},
+		});
+
+		// Add context menu item for the same action
+		this.registerEvent(
+			this.app.workspace.on("editor-menu", (menu, editor) => {
+				if (editor.getSelection().length > 0) {
+					menu.addItem((item) => {
+						item
+							.setTitle("Join ANSI lines")
+							.setIcon("merge")
+							.onClick(() => {
+								this.joinAnsiLines(editor);
+							});
+					});
+				}
+			})
+		);
+	}
+
+	joinAnsiLines(editor: any) {
+		const selection = editor.getSelection();
+		if (!selection) return;
+
+		// Regex to find newlines, optionally preceded by ANSI Reset (\x1b[0m) and whitespace.
+		// We replace them with empty string to merge lines.
+		// Logic:
+		// 1. (\x1b\[0m)? : Optional ANSI Reset code before newline
+		// 2. \s* : Optional whitespace before newline (and before reset)
+		// 3. [\r\n]+ : The newline(s)
+		// 4. \s* : Optional whitespace after newline (indentation of next line)
+
+		// To be safe and target the user's specific case (Word broken by newline + reset):
+		// Case: "DO [0m\nWN" -> "DOWN"
+		// We want to remove the [0m and the newline.
+
+		const merged = selection.replace(/(\x1b\[0m)?\s*[\r\n]+\s*/g, "");
+		editor.replaceSelection(merged);
 	}
 
 	onunload() {

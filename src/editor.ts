@@ -393,7 +393,7 @@ export const ansiPlugin = ViewPlugin.fromClass(class {
                         const rawSegment = text.slice(currentPos, blockEndInSelection);
 
                         if (!intersectingBlock.isRaw) {
-                            chunk += stripAnsi(rawSegment);
+                            chunk += stripAnsi(rawSegment).split(/\r?\n/).map(line => line.trimEnd()).join("\n");
                         } else {
                             chunk += rawSegment;
                         }
@@ -409,6 +409,20 @@ export const ansiPlugin = ViewPlugin.fromClass(class {
             if (event.clipboardData) {
                 event.clipboardData.setData('text/plain', finalText);
                 event.preventDefault();
+            }
+        },
+        paste(event, view) {
+            const text = event.clipboardData?.getData("text/plain");
+            if (!text || !text.includes("\x1b[")) return;
+
+            // Heuristic to join broken words in ANSI text
+            // Pattern: WordChar + [ANSI Reset] + Newline + WordChar
+            // Example: "...DO[0m\nWN..." -> "...DOWN..."
+            const joinedText = text.replace(/(\w)\x1b\[0m[\r\n]+(\w)/g, "$1$2");
+
+            if (joinedText !== text) {
+                event.preventDefault();
+                view.dispatch(view.state.replaceSelection(joinedText));
             }
         }
     }
