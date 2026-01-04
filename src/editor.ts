@@ -412,17 +412,24 @@ export const ansiPlugin = ViewPlugin.fromClass(class {
             }
         },
         paste(event, view) {
-            const text = event.clipboardData?.getData("text/plain");
-            if (!text || !text.includes("\x1b[")) return;
+            const originalText = event.clipboardData?.getData("text/plain");
+            if (!originalText || !originalText.includes("\x1b[")) return;
 
-            // Heuristic to join broken words in ANSI text
+            // 1. Trim trailing whitespace from each line specifically accounting for ANSI codes
+            // Problem: "   [0m".trimEnd() results in "   [0m" because [0m is not whitespace.
+            // Solution: Regex to match spaces followed optionally by ANSI codes at end of line.
+            let text = originalText.split(/\r?\n/).map(line => {
+                return line.replace(/[ \t]+((?:\x1b\[[0-9;]*[mK])*)$/, "$1");
+            }).join("\n");
+
+            // 2. Heuristic to join broken words in ANSI text
             // Pattern: WordChar + [ANSI Reset] + Newline + WordChar
             // Example: "...DO[0m\nWN..." -> "...DOWN..."
-            const joinedText = text.replace(/(\w)\x1b\[0m[\r\n]+(\w)/g, "$1$2");
+            text = text.replace(/(\w)\x1b\[0m[\r\n]+(\w)/g, "$1$2");
 
-            if (joinedText !== text) {
+            if (text !== originalText) {
                 event.preventDefault();
-                view.dispatch(view.state.replaceSelection(joinedText));
+                view.dispatch(view.state.replaceSelection(text));
             }
         }
     }
