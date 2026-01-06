@@ -415,74 +415,16 @@ export const ansiPlugin = ViewPlugin.fromClass(class {
             const originalText = event.clipboardData?.getData("text/plain");
             if (!originalText || !originalText.includes("\x1b[")) return;
 
-            const lines = originalText.split(/\r?\n/);
-            const processedLines: string[] = [];
-            let previousLineContent = "";
-            let previousLineWasPadded = true; // Assume start is fresh
-
             // Regex to detect trailing spaces (Padding) before optional ANSI codes
             const paddingRegex = /[ \t]+((?:\x1b\[[0-9;]*[mK])*)$/;
 
-            for (let i = 0; i < lines.length; i++) {
-                let line = lines[i];
-                if (typeof line !== 'string') continue;
+            const lines = originalText.split(/\r?\n/);
+            const processedLines = lines.map(line => {
+                // Trim trailing spaces but keep ansi codes
+                return line.replace(paddingRegex, "$1");
+            });
 
-                // 1. Detect Padding
-                const match = paddingRegex.exec(line);
-                const isPadded = !!match;
-
-                // 2. Trim Padding (if exists) or just keep line
-                if (match) {
-                    // Remove the spaces, keep the ANSI codes from the group
-                    line = line.replace(paddingRegex, "$1");
-                }
-
-                // 3. Merge Logic
-                // If we have a previous line, and it was NOT padded (implying Hard Wrap),
-                // AND it fits our "Split Word" regex check with the current line.
-                if (i > 0 && !previousLineWasPadded && processedLines.length > 0) {
-                    // Check if merging makes sense (Word Boundary)
-                    // Previous: ...Char + [ANSI]*
-                    // Current: Char...
-
-                    // We need to look at the boundary between 'previousLineContent' and 'line'
-                    // We'll speculatively join them with the [0m\n pattern logic
-
-                    // Use strict \w match to avoid merging '1' with '-' etc.
-                    // Construct a temporary join string to test the regex
-                    // Note: We need to emulate the exact sequence: 
-                    // PrevEndChar + [ANSI Reset]? + [Newline] + CurrStartChar
-
-                    // Simply checking endsWith/startsWith is easier than full Regex on joined text
-                    const lastChar = previousLineContent.replace(/(\x1b\[[0-9;]*[mK])*$/, "").slice(-1);
-                    const firstChar = line.replace(/^(\x1b\[[0-9;]*[mK])*/, "").slice(0, 1);
-
-                    // Check if likely part of a word/filename (Alphanumeric + . - _ @)
-                    // This fixes "fpcorp." + "int" not merging.
-                    const wordChar = /[a-zA-Z0-9_\-\.\@]/;
-                    if (wordChar.test(lastChar) && wordChar.test(firstChar)) {
-                        // Merge!
-                        // Remove the newline.
-                        // Ideally checking for [0m is good but let's assume the lack of padding is the signal.
-                        // We append current line to previous line in the array.
-                        const idx = processedLines.length - 1;
-                        processedLines[idx] += line;
-
-                        // The resulting line's "Padded" status depends on the NEW line's status
-                        previousLineWasPadded = isPadded;
-                        // Update content for next iteration
-                        previousLineContent = processedLines[idx] || "";
-                        continue;
-                    }
-                }
-
-                // No merge, just push
-                processedLines.push(line);
-                previousLineContent = line;
-                previousLineWasPadded = isPadded;
-            }
-
-            let finalText = processedLines.join("\n");
+            const finalText = processedLines.join("\n");
 
             if (finalText !== originalText) {
                 event.preventDefault();
